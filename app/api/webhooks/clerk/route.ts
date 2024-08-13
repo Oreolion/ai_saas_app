@@ -4,7 +4,6 @@ import { WebhookEvent } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
-
 import { createUser, deleteUser, updateUser } from "@/lib/actions/user.actions";
 
 export async function POST(req: Request) {
@@ -59,8 +58,12 @@ export async function POST(req: Request) {
 
   // CREATE
   if (eventType === "user.created") {
-    const { id, email_addresses, image_url, first_name, last_name, username } = evt.data;
-
+    const { id, email_addresses, image_url, first_name, last_name, username } =
+      evt.data;
+    if (!id || !email_addresses || !email_addresses.length) {
+      console.error("Missing required user data", evt.data);
+      return NextResponse.json({ error: "Invalid user data" }, { status: 400 });
+    }
     const user = {
       clerkId: id,
       email: email_addresses[0].email_address,
@@ -70,19 +73,24 @@ export async function POST(req: Request) {
       photo: image_url,
     };
 
-    const newUser = await createUser(user);
+    try {
+      const newUser = await createUser(user);
 
-    console.log(newUser);
-    // Set public metadata
-    if (newUser) {
-      await clerkClient.users.updateUserMetadata(id, {
-        publicMetadata: {
-          userId: newUser._id,
-        },
-      });
+      if (newUser) {
+        await clerkClient.users.updateUserMetadata(id, {
+          publicMetadata: {
+            userId: newUser._id,
+          },
+        });
+      }
+      return NextResponse.json({ message: "OK", user: newUser });
+    } catch (error) {
+      console.error("Error creating user:", error);
+      return NextResponse.json(
+        { error: "Failed to create user" },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json({ message: "OK", user: newUser });
   }
 
   // UPDATE
